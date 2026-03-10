@@ -1,6 +1,6 @@
 # Large binary files - do not commit
 Frames/
-Frames.zip
+*.zip
 *.mp4
 
 # Python cache
