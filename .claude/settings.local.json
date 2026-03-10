@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"C:\\\\Users\\\\USER\\\\Documents\\\\台科\\\\CVApplication\" && python solution.py)",
+      "Bash(ls \"C:\\\\Users\\\\USER\\\\Documents\\\\台科\\\\CVApplication\\\\Frames\" | wc -l && file \"C:\\\\Users\\\\USER\\\\Documents\\\\台科\\\\CVApplication\\\\Frames\\\\0000.jpg\" 2>/dev/null || echo \"file cmd not available\" && python -c \"\nimport cv2, os\np = r'C:\\\\Users\\\\USER\\\\Documents\\\\台科\\\\CVApplication\\\\Frames\\\\0000.jpg'\nprint\\('exists:', os.path.exists\\(p\\)\\)\nimg = cv2.imread\\(p\\)\nprint\\('img:', img\\)\n\")",
+      "Bash(python -c \"\nimport cv2, os\np = r'C:\\\\Users\\\\USER\\\\Documents\\\\台科\\\\CVApplication\\\\M11325038.mp4'\ncap = cv2.VideoCapture\\(p\\)\nprint\\('opened:', cap.isOpened\\(\\)\\)\nprint\\('frame count:', cap.get\\(cv2.CAP_PROP_FRAME_COUNT\\)\\)\nprint\\('width x height:', cap.get\\(cv2.CAP_PROP_FRAME_WIDTH\\), 'x', cap.get\\(cv2.CAP_PROP_FRAME_HEIGHT\\)\\)\nprint\\('fps:', cap.get\\(cv2.CAP_PROP_FPS\\)\\)\ncap.release\\(\\)\n\")"
+    ]
+  }
+}

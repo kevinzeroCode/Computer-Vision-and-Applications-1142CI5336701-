@@ -1,0 +1,13 @@
+# Large binary files - do not commit
+Frames/
+Frames.zip
+*.mp4
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
