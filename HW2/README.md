@@ -1,8 +1,8 @@
 # HW2: Create the Front View of a Circular Painting by Homography
 
 **Course:** Computer Vision and Applications (CI5336701), 2026 Spring, NTUST
-**Student ID:** [填入學號]
-**Name:** [填入姓名]
+**Student ID:** M11415015
+**Name:** 張祐誠
 
 ---
 
@@ -10,10 +10,10 @@
 
 | Item | Version |
 |------|---------|
-| Python | [填入版本，例如 3.11] |
+| Python | 3.11.9 |
 | OpenCV (`cv2`) | [填入版本，例如 4.11.0] |
 | NumPy | [填入版本] |
-| OS | [填入作業系統] |
+| OS | Windows |
 
 Install dependencies:
 ```bash
@@ -25,7 +25,7 @@ pip install opencv-python numpy
 ## How to Run
 
 ```bash
-python "hw2_template copy.py"
+python hw2_template_filled.py
 ```
 
 Input files (must be in the same folder):
@@ -33,8 +33,7 @@ Input files (must be in the same folder):
 - `2.jpg` — photo of the painting from the left/front angle
 
 Output files generated:
-- `[StudentID].jpg` — final result: front view, occlusion-free, cropped to circle
-- `warped1.jpg` / `warped2.jpg` — perspective-corrected views of each image
+- `M11415015.jpg` — final result: front view, occlusion-free, cropped to circle
 - `merged.jpg` — merged image before final circle crop
 - `matches.jpg` — corresponding points marked on both images (side-by-side)
 
@@ -42,62 +41,100 @@ Output files generated:
 
 ## Method Description
 
-### Step 1 — Detect the Circular Frame
+### Step 1 — Select Matching Points (img1 → img2)
 
-The blue circular frame is detected in both images using HSV color segmentation.
-The detected contour is filtered by a **circularity score** to pick the most circular
-large contour, then `cv2.fitEllipse()` fits an ellipse to it.
+8 corresponding points were identified on both images by detecting the blue
+circular frame in each image via HSV colour segmentation, fitting an ellipse,
+and sampling 8 evenly-spaced perimeter points starting from the **topmost point**
+going clockwise (45° apart).
 
-> The frame appears as an **ellipse** in each photo due to perspective distortion
-> (a circle in 3D projected onto a 2D image plane becomes an ellipse).
+> The frame appears as an **ellipse** in each photo because a 3D circle viewed
+> from an oblique angle projects onto the 2D image plane as an ellipse
+> (perspective foreshortening).
 
-### Step 2 — Compute Homography (Ellipse → Canonical Circle)
+| Point | Clock position | img1 (x, y) | img2 (x, y) |
+|-------|---------------|-------------|-------------|
+| 1 | 12:00 — Top        | (1091, 168) | (1031,  71) |
+| 2 | 1:30  — Top-Right  | (1349, 284) | (1359, 203) |
+| 3 | 3:00  — Right      | (1465, 565) | (1506, 523) |
+| 4 | 4:30  — Bot-Right  | (1370, 845) | (1385, 842) |
+| 5 | 6:00  — Bottom     | (1121, 961) | (1068, 974) |
+| 6 | 7:30  — Bot-Left   | ( 862, 845) | ( 740, 842) |
+| 7 | 9:00  — Left       | ( 746, 565) | ( 593, 523) |
+| 8 | 10:30 — Top-Left   | ( 841, 284) | ( 714, 203) |
 
-For each image, **[填入你選取對應點的方式，例如：]**
-- 自動從橢圓上等間距取樣 12 個點，對應到正圓上的 12 個點
-- / 手動在兩張圖上各選取 [N] 個對應點（說明選哪些特徵點）
+### Step 2 — Compute Homography (img1 → img2)
 
-The topmost point of each ellipse is used as the parametric start angle,
-ensuring that the same physical point on the 3D circular frame maps to the
-same position in the canonical (frontal) view for both images.
+A single 3×3 homography matrix **H** maps img1's coordinate frame to img2's.
+It encodes the full perspective distortion between the two viewpoints: scale,
+rotation, shear, and perspective foreshortening — all in one matrix.
 
-`cv2.findHomography()` with RANSAC solves for the 3×3 homography matrix **H**
-such that: `x_canonical = H · x_image`
+`cv2.findHomography()` with RANSAC (threshold 5 px) solves for H such that:
 
-### Step 3 — Warp Both Images
+```
+x_img2 = H · x_img1   (homogeneous coordinates)
+```
 
-`cv2.warpPerspective()` applies **H1** and **H2** to warp both images into
-the same canonical frontal-view canvas.
+### Step 3 — Warp img1 into img2's Frame (`warpPerspective`)
+
+`cv2.warpPerspective(img1, H, output_size)` fills every output pixel by
+**inverse-mapping**: for each output position `(x', y')`, it computes the source
+position using `H⁻¹` and samples `img1` there. This avoids holes that would
+appear with forward mapping.
+
+The homogeneous multiply and perspective divide:
+
+```
+[x', y', w']ᵀ = H · [x, y, 1]ᵀ
+actual coords = (x'/w', y'/w')
+```
+
+The division by `w'` (perspective divide) is the step affine transforms cannot
+perform. After warping, `warped1` and `img2` share the same coordinate frame and
+their circular frames are aligned.
 
 ### Step 4 — Merge to Remove Occluding People
 
-**[填入你的合併策略，例如：]**
+`img2` is used as the base (frontal view is clean except for the bald head at
+the bottom). The head region is replaced with pixels from `warped1`:
 
-- `warped2` is used as the base (frontal view is clean except for the bald head at the bottom)
-- The person's head in `warped2` is detected by skin-color segmentation (HSV),
-  restricted to the lower-center region of the circle to avoid false positives
-- A convex hull fills gaps in the detected region
-- The head area is replaced with pixels from `warped1` via **feathered alpha blending**
-  (Gaussian-blurred mask for seamless edges)
+1. **Skin-colour detection** in `img2` using HSV (`H=[7,22], S=[30,220], V=[100,235]`)
+2. **ROI restriction** to the lower-centre region (`y > cy+50`, `|x−cx| < 300`)
+   to avoid false positives from the cat's orange fur
+3. **Convex hull** over all detected skin contours to fill internal gaps
+4. **Feathered alpha blend**: the hull mask is Gaussian-blurred (`kernel 61×61`)
+   for a smooth edge transition:
+
+```
+merged = α × warped1 + (1−α) × img2
+```
 
 ### Step 5 — Crop to Perfect Circle
 
-A circular mask is applied to the merged image and the result is cropped to
-a tight bounding box.
+A circular mask (centre `(1049, 523)`, radius `454` px — derived from the
+detected ellipse in img2) is applied via `cv2.bitwise_and`, then the result is
+cropped to the tight bounding box.
+
+---
+
+## Template vs Filled Comparison
+
+The two files differ in exactly three places:
+
+| Location | `hw2_template.py` | `hw2_template_filled.py` |
+|----------|-------------------|--------------------------|
+| `pts1` / `pts2` | `[0, 0]` placeholders | 8 actual pixel coordinates per image |
+| `merge_images` | Simple black-pixel complement + average | Skin detection → convex hull → feathered blend |
+| `cx, cy, radius` | `out_w//2`, `out_h//2`, `min//3` (TODOs) | `1049`, `523`, `454` (from ellipse fit) |
+
+`compute_homography`, `warp_to_front`, and `crop_to_circle` required no changes —
+their logic was already complete in the template.
 
 ---
 
 ## Matching Points
 
-The image below shows the [N] corresponding points used on both input images:
-
 ![matches](matches.jpg)
-
-**[填入你如何選點的說明，例如：]**
-Points were sampled automatically from the detected ellipse perimeter,
-starting from the topmost visible point and spaced evenly clockwise.
-/ Points were selected manually by identifying [特徵描述，例如：corners of the blue frame,
-distinctive painting features, etc.]
 
 ---
 
@@ -107,10 +144,6 @@ distinctive painting features, etc.]
 |---------|---------|
 | ![](1.jpg) | ![](2.jpg) |
 
-| Warped 1 | Warped 2 |
-|----------|----------|
-| ![](warped1.jpg) | ![](warped2.jpg) |
-
 | Merged | Final Result |
 |--------|-------------|
 | ![](merged.jpg) | ![](M11415015.jpg) |
@@ -119,6 +152,6 @@ distinctive painting features, etc.]
 
 ## Notes / Issues
 
-- [填入任何值得說明的事項，例如遇到的困難、限制、改進方向等]
-- Example: The ellipse fit for `1.jpg` is slightly imperfect because the person
-  occludes part of the frame.
+- Skin-colour ROI thresholds (`cy+50`, `cx±300`) are hand-tuned for these two
+  specific images and may not generalise to other inputs.
+- The homography maps img1 → img2. The inverse `H⁻¹` maps img2 → img1 if needed.
