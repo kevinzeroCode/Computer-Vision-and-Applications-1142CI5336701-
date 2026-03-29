@@ -47,9 +47,9 @@ python hw2_template_filled.py
 **AI 產出：** `hw2_template.py`
 
 共有 3 個核心 TODO 填空：
-1. `pts1` / `pts2` — 兩張圖的對應點座標
+1. `pts1` / `pts2` — 兩張圖的對應點座標（H1 用）
 2. `merge_images` — 合併策略（移除人物）
-3. `cx, cy, radius` — 圓心座標與半徑（用於最終裁切）
+3. `ellipse_pts` — 橢圓上 4 個點（H2 用，將橢圓對應到正圓）
 
 ---
 
@@ -122,12 +122,32 @@ alpha = cv2.GaussianBlur(head_mask / 255.0, (61, 61), 0)
 merged = alpha × warped1 + (1−alpha) × img2
 ```
 
-### Step 5 — 裁切成正圓
+### Step 5 — 第二個 Homography（H2）：橢圓 → 正圓
+
+在 img2 的橢圓上手動選取 4 個點（上/右/下/左），對應到目標正圓的 4 個位置，
+用 `cv2.getPerspectiveTransform` 計算 H2：
 
 ```python
-cx, cy, radius = 1049, 523, 454   # 從 img2 橢圓偵測結果取得
-crop_to_circle(merged, (cx, cy), radius)
+ellipse_pts = np.array([
+    [1031,  71],   # Top
+    [1506, 523],   # Right
+    [1068, 974],   # Bottom
+    [ 593, 523],   # Left
+], dtype=np.float32)
+
+circle_pts = np.array([
+    [510,  60],    # Top    (cx, cy-R)
+    [960, 510],    # Right  (cx+R, cy)
+    [510, 960],    # Bottom (cx, cy+R)
+    [ 60, 510],    # Left   (cx-R, cy)
+], dtype=np.float32)
+
+H2 = cv2.getPerspectiveTransform(ellipse_pts, circle_pts)
+result = cv2.warpPerspective(merged, H2, (1020, 1020))
 ```
+
+這是幾何上正確的做法：透過 H2 把透視畸變的橢圓真正「拉平」成正圓，
+而不只是用 mask 裁切。
 
 ---
 
@@ -178,17 +198,24 @@ feathered:   0 0.2 0.5 0.8 1  ← 平滑過渡
 
 ---
 
-### Q4：最後 TODO 的圓心和半徑怎麼找？
+### Q4：最後 TODO 是 H2（橢圓→正圓），不是找圓心半徑，而是找 4 個對應點？
 
-預設值 `out_w//2, out_h//2` 和 `min//3` 是猜測，不準確。
-正確做法是從 img2 的橢圓偵測結果取得：
+**原本的誤解：** 以為要找圓心和半徑來 crop，但那樣只是裁切，橢圓的透視畸變沒有修正。
+
+**題目實際要求：** 選橢圓上 4 個點 → 對應到目標正圓的 4 個點 → 建立 H2。
 
 ```python
-e2 = cv2.fitEllipse(detect_circle_contour(img2))
-cx     = int(e2[0][0])                          # = 1049
-cy     = int(e2[0][1])                          # = 523
-radius = int((e2[1][0] + e2[1][1]) / 4)        # = 454
+ellipse_pts:  Top(1031,71)  Right(1506,523)  Bottom(1068,974)  Left(593,523)
+circle_pts:   Top(510,60)   Right(960,510)   Bottom(510,960)   Left(60,510)
+
+H2 = cv2.getPerspectiveTransform(ellipse_pts, circle_pts)
+result = cv2.warpPerspective(merged, H2, (1020, 1020))
 ```
+
+| | 原本（crop） | 現在（H2） |
+|---|---|---|
+| 幾何 | 橢圓被圓框住，透視畸變仍在 | 透視畸變被 H2 反向補償 |
+| 結果 | 形狀像圓但視角仍是斜的 | 真正的正面視角正圓 |
 
 ---
 
@@ -208,9 +235,9 @@ M11415015_HW2/
 
 | 配分項目 | 對應實作 | 佔比 |
 |---------|---------|------|
-| Correct homography estimation | pts1/pts2 + cv2.findHomography | 50% |
+| Correct homography estimation | pts1/pts2 + cv2.findHomography (H1) | 50% |
 | Merge with occlusion-free effect | HSV + Convex Hull + Alpha Blend | 35% |
-| Convert to perfect circle | crop_to_circle（橢圓偵測取圓心） | 15% |
+| Convert to perfect circle | ellipse_pts + getPerspectiveTransform (H2) | 15% |
 
 ---
 

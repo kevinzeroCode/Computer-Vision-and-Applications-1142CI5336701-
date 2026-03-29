@@ -135,24 +135,48 @@ def merge_images(warped1, warped2):
     return merged.astype(np.uint8)
 
 
-# ─── STEP 5: CROP TO PERFECT CIRCLE ───────────────────────────────────────────
-def crop_to_circle(image, center, radius):
-    """
-    Mask `image` to a circle defined by `center` (cx, cy) and `radius`.
-    Pixels outside the circle are set to black.
-    """
-    h, w = image.shape[:2]
-    mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(mask, center, radius, 255, -1)
-    result = cv2.bitwise_and(image, image, mask=mask)
+# ─── STEP 5: SECOND HOMOGRAPHY — ELLIPSE → PERFECT CIRCLE ────────────────────
+TARGET_RADIUS = 450
+PAD           = 60
 
-    # Crop tight bounding box around the circle
-    x1 = max(center[0] - radius, 0)
-    y1 = max(center[1] - radius, 0)
-    x2 = min(center[0] + radius, w)
-    y2 = min(center[1] + radius, h)
-    cropped = result[y1:y2, x1:x2]
-    return cropped
+# TODO: Fill in 4 points on the ellipse in img2 (top / right / bottom / left)
+ellipse_pts = np.array([
+    [0, 0],   # Top    — PLACEHOLDER
+    [0, 0],   # Right  — PLACEHOLDER
+    [0, 0],   # Bottom — PLACEHOLDER
+    [0, 0],   # Left   — PLACEHOLDER
+], dtype=np.float32)
+
+# TODO: Fill in the 4 corresponding points on the target circle
+#       Hint: if center=(cx, cy) and radius=R, then
+#         Top=(cx, cy-R), Right=(cx+R, cy), Bottom=(cx, cy+R), Left=(cx-R, cy)
+_r  = TARGET_RADIUS
+_cx = TARGET_RADIUS + PAD
+_cy = TARGET_RADIUS + PAD
+circle_pts = np.array([
+    [_cx,      _cy - _r],
+    [_cx + _r, _cy     ],
+    [_cx,      _cy + _r],
+    [_cx - _r, _cy     ],
+], dtype=np.float32)
+
+
+def warp_to_circle(image):
+    """
+    TODO: Compute H2 using cv2.getPerspectiveTransform(ellipse_pts, circle_pts),
+          warp the merged image to the canonical circle canvas,
+          apply a circle mask to clean edges, and crop to bounding box.
+    """
+    canvas_size = TARGET_RADIUS * 2 + PAD * 2
+    H2 = cv2.getPerspectiveTransform(ellipse_pts, circle_pts)  # TODO: fill ellipse_pts above
+    warped = cv2.warpPerspective(image, H2, (canvas_size, canvas_size))
+
+    mask = np.zeros((canvas_size, canvas_size), np.uint8)
+    cv2.circle(mask, (_cx, _cy), TARGET_RADIUS, 255, -1)
+    warped = cv2.bitwise_and(warped, warped, mask=mask)
+
+    r = TARGET_RADIUS
+    return warped[_cy - r:_cy + r, _cx - r:_cx + r]
 
 
 # ─── VISUALISE MATCHING POINTS ─────────────────────────────────────────────────
@@ -242,15 +266,10 @@ def main():
     cv2.imwrite("merged.jpg", merged)
     print("  merged.jpg saved.")
 
-    # ── Crop to circle ────────────────────────────────────────────────────────
-    print("\n[Step] Cropping to perfect circle...")
-    # TODO: Adjust center and radius to match the circular painting frame
-    #       Hint: find the blue circle border in the merged image
-    cx = out_w // 2   # TODO: update with actual circle center x
-    cy = out_h // 2   # TODO: update with actual circle center y
-    radius = min(out_w, out_h) // 3  # TODO: update with actual radius
-
-    result = crop_to_circle(merged, (cx, cy), radius)
+    # ── H2: warp merged image → perfect circle ───────────────────────────────
+    # TODO: fill in ellipse_pts above (4 points on the ellipse in img2)
+    print("\n[Step] Applying H2 (ellipse → perfect circle)...")
+    result = warp_to_circle(merged)
     cv2.imwrite(OUTPUT_PATH, result)
     print(f"\n  Final result saved to {OUTPUT_PATH}")
 

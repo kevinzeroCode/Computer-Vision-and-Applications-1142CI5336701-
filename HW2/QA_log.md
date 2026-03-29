@@ -98,37 +98,50 @@ merged = α × warped1 + (1−α) × img2
 
 ---
 
-## Q4：最後一個 TODO 是找圓心和半徑來 crop，要怎麼找？
+## Q4：最後一個 TODO 是第二個 Homography（H2），要怎麼選點？
 
-**TODO 原始佔位：**
+**原本的錯誤理解：** 以為要找圓心和半徑來 crop，但這樣只是裁切，橢圓的透視畸變沒有被修正。
+
+**題目實際要求（Homework#2.pdf）：**
+> "select 4 points on the ellipse (either in 1.jpg or in 2.jpg) to map back into the final perfect circle (to have second homography)"
+
+所以 Step 5 要建立 **H2**，不是裁切，而是用第二個 homography 把橢圓真正「拉平」成正圓。
+
+**選點方式：**
+
+在 img2 橢圓上選上/右/下/左四個端點，對應到目標正圓的四個方向點：
 
 ```python
-cx = out_w // 2          # TODO
-cy = out_h // 2          # TODO
-radius = min(out_w, out_h) // 3  # TODO
+# img2 橢圓上的 4 個點（手動選取，位於橢圓的四個端點）
+ellipse_pts = np.array([
+    [1031,  71],   # Top
+    [1506, 523],   # Right
+    [1068, 974],   # Bottom
+    [ 593, 523],   # Left
+], dtype=np.float32)
+
+# 目標正圓的 4 個對應點（radius=450, center=(510,510)）
+circle_pts = np.array([
+    [510,  60],    # Top    = (cx, cy−R)
+    [960, 510],    # Right  = (cx+R, cy)
+    [510, 960],    # Bottom = (cx, cy+R)
+    [ 60, 510],    # Left   = (cx−R, cy)
+], dtype=np.float32)
+
+H2 = cv2.getPerspectiveTransform(ellipse_pts, circle_pts)
+result = cv2.warpPerspective(merged, H2, (1020, 1020))
 ```
 
-**正確做法：從 img2 的橢圓偵測結果取得**
+**為什麼用 `getPerspectiveTransform` 而不是 `findHomography`？**
 
-前面已經對 img2 做了橢圓偵測，橢圓的中心和半軸就是答案：
+`getPerspectiveTransform` 剛好接受 4 對點，解出唯一的 H2，不需要 RANSAC。
+4 個點已足夠確定一個 homography（8 DOF，4 對點 = 8 條方程式）。
 
-```python
-e2 = cv2.fitEllipse(detect_circle_contour(img2))
-# e2 = ((cx, cy), (MA, ma), angle)
+**原本 crop 做法 vs H2 做法的差別：**
 
-cx     = int(e2[0][0])
-cy     = int(e2[0][1])
-radius = int((e2[1][0] + e2[1][1]) / 4)  # 兩軸平均後取半
-```
-
-本題 img2 的偵測結果：`center=(1049, 523)`，`semi-axes=(444, 464)`，`radius≈454`
-
-**為什麼不能用預設值？**
-
-| 方法 | 問題 |
-|------|------|
-| `out_w // 2`, `out_h // 2` | 圓心不一定在圖片正中央 |
-| `min(w,h) // 3` | 純粹猜測，幾乎一定裁到邊框或裁太小 |
-| 橢圓偵測結果 | 直接從影像計算，準確對應畫框實際位置 |
+| | 原本（crop） | 現在（H2） |
+|---|---|---|
+| 幾何 | 橢圓被圓框住，透視畸變仍在 | 透視畸變被 H2 反向補償 |
+| 結果 | 形狀正確但視角仍是斜的 | 真正的正面視角正圓 |
 
 ---
