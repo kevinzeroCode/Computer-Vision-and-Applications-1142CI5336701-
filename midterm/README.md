@@ -96,13 +96,22 @@ The camera center is computed as **C = −P[:,:3]⁻¹ P[:,3]**.
 A 3D point $(X, Y, Z)$ is a 3-vector, but $\mathbf{P}$ is $3 \times 4$ — they cannot be multiplied directly.
 The fix is to append a $1$, lifting the point into **homogeneous coordinates**:
 
-$$\tilde{\mathbf{X}} = \begin{bmatrix} X \\ Y \\ Z \\ 1 \end{bmatrix} \in \mathbb{R}^4$$
+$$\tilde{\mathbf{X}} = \begin{bmatrix}
+X \\
+Y \\
+Z \\
+1
+\end{bmatrix} \in \mathbb{R}^4$$
 
 This extra $1$ lets translation be absorbed into the matrix multiply. Without it, rotation and translation would have to be applied separately.
 
 #### What does the matrix multiply actually do?
 
-$$\mathbf{proj} = \mathbf{P} \cdot \tilde{\mathbf{X}} = \begin{bmatrix} s \cdot u \\ s \cdot v \\ s \end{bmatrix}$$
+$$\mathbf{proj} = \mathbf{P} \cdot \tilde{\mathbf{X}} = \begin{bmatrix}
+s \cdot u \\
+s \cdot v \\
+s
+\end{bmatrix}$$
 
 $\mathbf{P}$ ($3 \times 4$) times $\tilde{\mathbf{X}}$ ($4 \times 1$) gives a 3-vector — but this is **not** a pixel coordinate yet. All three components are scaled by the same depth factor $s$ (the camera-space z value).
 
@@ -118,7 +127,11 @@ This is the core of perspective projection: objects farther away appear smaller.
 
 $$\mathbf{P} = \mathbf{K} \cdot [\mathbf{R} \mid \mathbf{t}]$$
 
-$$\mathbf{K} = \begin{bmatrix} f_x & 0 & c_x \\ 0 & f_y & c_y \\ 0 & 0 & 1 \end{bmatrix}, \quad
+$$\mathbf{K} = \begin{bmatrix}
+f_x & 0 & c_x \\
+0 & f_y & c_y \\
+0 & 0 & 1
+\end{bmatrix}, \quad
 [\mathbf{R} \mid \mathbf{t}] = \begin{bmatrix}
 r_{11} & r_{12} & r_{13} & t_1 \\
 r_{21} & r_{22} & r_{23} & t_2 \\
@@ -265,8 +278,8 @@ Open `Santa_colored.ply` in MeshLab to inspect the result.
 
 這是為了符合矩陣乘法的維度規則，並利用 NumPy 的批次運算加速。
 
-- 投影矩陣：$\mathbf{P} \in \mathbb{R}^{3 \times 4}$
-- 齊次座標頂點：$\mathbf{X} \in \mathbb{R}^{N \times 4}$
+- 投影矩陣 **P**：形狀為 3 × 4
+- 齊次座標頂點 **X**：形狀為 N × 4（每列為一個頂點，已附加 1）
 
 為了讓矩陣順利相乘，必須調整維度使其內部對齊 $(3 \times \underline{4}) \times (\underline{4} \times N)$：
 
@@ -274,7 +287,11 @@ Open `Santa_colored.ply` in MeshLab to inspect the result.
 2. **矩陣相乘**：計算 $\mathbf{P} \mathbf{X}^\top$，結果維度為 $(3 \times N)$
 3. **第二次轉置**：將結果轉回 $(N \times 3)$，以便直接讀取每一列的 $(s \cdot u, s \cdot v, s)$
 
-$$\mathbf{proj} = (\mathbf{P} \mathbf{X}^\top)^\top = \begin{bmatrix} s_1 u_1 & s_1 v_1 & s_1 \\ \vdots & \vdots & \vdots \\ s_N u_N & s_N v_N & s_N \end{bmatrix}$$
+$$\mathbf{proj} = (\mathbf{P} \mathbf{X}^\top)^\top = \begin{bmatrix}
+s_1 u_1 & s_1 v_1 & s_1 \\
+\vdots & \vdots & \vdots \\
+s_N u_N & s_N v_N & s_N
+\end{bmatrix}$$
 
 對應程式碼（`colorize.py` lines 167, 180–183）：
 
