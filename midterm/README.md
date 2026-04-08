@@ -64,7 +64,10 @@ Given N ≥ 6 pairs of 2D-3D correspondences, a 3×4 projection matrix **P** is 
 
 The Direct Linear Transform (DLT) builds a $2N \times 12$ homogeneous system from each correspondence. Each 3D–2D pair $(X, Y, Z) \leftrightarrow (u, v)$ contributes two rows:
 
-$$\begin{bmatrix} X & Y & Z & 1 & 0 & 0 & 0 & 0 & -uX & -uY & -uZ & -u \\ 0 & 0 & 0 & 0 & X & Y & Z & 1 & -vX & -vY & -vZ & -v \end{bmatrix} \mathbf{p} = \mathbf{0}$$
+$$\begin{bmatrix}
+X & Y & Z & 1 & 0 & 0 & 0 & 0 & -uX & -uY & -uZ & -u \\
+0 & 0 & 0 & 0 & X & Y & Z & 1 & -vX & -vY & -vZ & -v
+\end{bmatrix} \mathbf{p} = \mathbf{0}$$
 
 where $\mathbf{p} \in \mathbb{R}^{12}$ is the row-major flattening of $\mathbf{P}$. Stacking $N$ pairs gives $\mathbf{A}\mathbf{p} = \mathbf{0}$, solved by taking the right singular vector of $\mathbf{A}$ corresponding to the smallest singular value (SVD). Both 3D and 2D points are normalized before solving (Hartley normalization) to improve numerical stability.
 
@@ -115,7 +118,12 @@ This is the core of perspective projection: objects farther away appear smaller.
 
 $$\mathbf{P} = \mathbf{K} \cdot [\mathbf{R} \mid \mathbf{t}]$$
 
-$$\mathbf{K} = \begin{bmatrix} f_x & 0 & c_x \\ 0 & f_y & c_y \\ 0 & 0 & 1 \end{bmatrix}, \quad [\mathbf{R} \mid \mathbf{t}] = \begin{bmatrix} r_{11} & r_{12} & r_{13} & t_1 \\ r_{21} & r_{22} & r_{23} & t_2 \\ r_{31} & r_{32} & r_{33} & t_3 \end{bmatrix}$$
+$$\mathbf{K} = \begin{bmatrix} f_x & 0 & c_x \\ 0 & f_y & c_y \\ 0 & 0 & 1 \end{bmatrix}, \quad
+[\mathbf{R} \mid \mathbf{t}] = \begin{bmatrix}
+r_{11} & r_{12} & r_{13} & t_1 \\
+r_{21} & r_{22} & r_{23} & t_2 \\
+r_{31} & r_{32} & r_{33} & t_3
+\end{bmatrix}$$
 
 | Component | Role | Shape |
 |-----------|------|-------|
