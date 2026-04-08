@@ -1,0 +1,15 @@
+# Large data files (tracked separately or not needed in repo)
+Santa_geometry.ply
+Santa_colored.ply
+Santa_colored.xyz
+7Images and xyz/Santa.xyz
+MidtermProject.zip
+
+# Debug/temp images
+debug_*.jpg
+debug_proj/
+未命名.png
+
+# Python cache
+__pycache__/
+*.pyc
