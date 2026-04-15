@@ -1,7 +1,11 @@
-# 3D pts for img06: hat_tip,left_eye,left_shoulder,welcome_top_L,welcome_bot_L,foot_L
+# 3D pts for img06: hat_tip,left_shoulder,welcome_top_L,welcome_bot_L,foot_L,belt_welcome_L,belt_bump_L1,belt_bump_L3,belt_bump_L4,belt_back_1
 0.356331 -12.710505 68.027725
--8.501390 1.184743 39.635475
 -12.165690 8.660648 26.027912
 -9.937483 13.721217 20.633886
 -9.950125 15.450649 11.518140
 -8.765692 8.868723 0.094635
+-7.218196 9.748051 18.630545
+-10.870733 3.446745 21.199118
+-10.238719 -3.087901 22.277596
+-11.736848 -2.847828 18.561790
+0.029330 -11.318846 21.155157

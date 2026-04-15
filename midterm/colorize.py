@@ -10,7 +10,8 @@ Steps:
   5. Output Santa_colored.ply and Santa_colored.xyz
 
 Usage:
-    python colorize.py [--zbuf_sigma 2.0] [--gray 128]
+    python colorize.py [--zbuf_eps 0.4] [--zbuf_scale 4] [--weight_gamma 3.0]
+                       [--winner_ratio 1.35] [--gray 128]
 """
 
 import os
@@ -107,10 +108,18 @@ def build_zbuffer(P, pts, img_h, img_w, scale=1):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--zbuf_eps', type=float, default=0.05,
-                        help='Z-buffer tolerance (world units). Default 0.05')
+    parser.add_argument('--zbuf_eps', type=float, default=0.4,
+                        help='Z-buffer tolerance (world units). Default 0.4')
     parser.add_argument('--zbuf_scale', type=int, default=4,
                         help='Downsample factor for z-buffer (speed/memory). Default 4')
+    parser.add_argument('--weight_gamma', type=float, default=3.0,
+                        help='Exponent for view-confidence weighting. Higher = sharper, less blending. Default 3.0')
+    parser.add_argument('--winner_ratio', type=float, default=1.35,
+                        help='Use the best view alone when its score is this much larger than the second-best. Default 1.35')
+    parser.add_argument('--fallback_cos', type=float, default=-0.05,
+                        help='Minimum cosine for relaxed fallback coloring. Closer to 0 is safer. Default -0.05')
+    parser.add_argument('--fallback_eps_scale', type=float, default=1.5,
+                        help='Multiplier for z-buffer epsilon in fallback coloring. Lower = safer. Default 1.5')
     parser.add_argument('--gray', type=int, default=128,
                         help='Fallback color for uncolored vertices')
     args = parser.parse_args()
@@ -144,14 +153,13 @@ def main():
             imgs.append(None)
         else:
             imgs.append(np.array(Image.open(p)))
-    img_h, img_w = imgs[0].shape[:2] if imgs[0] is not None else (2748, 1836)
-
     print(f'Building z-buffers (scale={args.zbuf_scale}) ...')
     zbufs = []
     for i, P in enumerate(Ps):
         if P is None or imgs[i] is None:
             zbufs.append(None)
             continue
+        img_h, img_w = imgs[i].shape[:2]
         print(f'  image {i+1:02d}', end='\r', flush=True)
         zbuf, _ = build_zbuffer(P, pts, img_h, img_w, scale=args.zbuf_scale)
         zbufs.append(zbuf)
@@ -161,8 +169,10 @@ def main():
     centers = [camera_center(P) if P is not None else None for P in Ps]
 
     print('Colorizing vertices ...')
-    color_acc  = np.zeros((N, 3), dtype=np.float64)   # weighted colour sum
-    weight_acc = np.zeros(N,      dtype=np.float64)   # total weight per vertex
+    best_score   = np.full(N, -np.inf, dtype=np.float64)
+    second_score = np.full(N, -np.inf, dtype=np.float64)
+    best_color   = np.zeros((N, 3), dtype=np.float64)
+    second_color = np.zeros((N, 3), dtype=np.float64)
 
     pts_h = np.hstack([pts, np.ones((N, 1))])   # (N,4)
 
@@ -170,6 +180,7 @@ def main():
         if P is None or imgs[i] is None or zbufs[i] is None:
             continue
         img_arr = imgs[i]
+        img_h, img_w = img_arr.shape[:2]
         zbuf    = zbufs[i]
         C       = centers[i]
         scale   = args.zbuf_scale
@@ -191,9 +202,15 @@ def main():
         cos_angle = np.einsum('ij,ij->i', nors, view)
         mask &= cos_angle > 0
 
-        # Z-buffer: skip for sparse point cloud (backface culling handles occlusion)
-
         idx = np.where(mask)[0]
+
+        # Z-buffer occlusion check
+        if zbuf is not None and len(idx) > 0:
+            ui_z = np.clip((u[idx] / scale).astype(int), 0, zbuf.shape[1] - 1)
+            vi_z = np.clip((v[idx] / scale).astype(int), 0, zbuf.shape[0] - 1)
+            dist_cam = np.linalg.norm(pts[idx] - C, axis=1)
+            visible  = dist_cam <= zbuf[vi_z, ui_z] + args.zbuf_eps
+            idx = idx[visible]
         if len(idx) == 0:
             continue
 
@@ -210,15 +227,116 @@ def main():
 
         # Weight = cosine of incidence angle (unnormalised view → normalise)
         view_len = np.linalg.norm(view[idx], axis=1) + 1e-12
-        w = np.clip(cos_angle[idx] / view_len, 0, 1)[:, None]
+        score = np.clip(cos_angle[idx] / view_len, 0, 1) ** args.weight_gamma
 
-        np.add.at(color_acc,  idx, rgb * w)
-        np.add.at(weight_acc, idx, w[:, 0])
+        old_best = best_score[idx].copy()
+        old_best_color = best_color[idx].copy()
+
+        better = score > old_best
+        if np.any(better):
+            idx_b = idx[better]
+            second_score[idx_b] = old_best[better]
+            second_color[idx_b] = old_best_color[better]
+            best_score[idx_b] = score[better]
+            best_color[idx_b] = rgb[better]
+
+        remaining = ~better
+        if np.any(remaining):
+            idx_r = idx[remaining]
+            score_r = score[remaining]
+            second_better = score_r > second_score[idx_r]
+            if np.any(second_better):
+                idx_s = idx_r[second_better]
+                second_score[idx_s] = score_r[second_better]
+                second_color[idx_s] = rgb[remaining][second_better]
+
+    # ── Fallback pass: color remaining vertices with relaxed back-face cull ── #
+    # Handles bottom/underside vertices that no camera sees head-on.
+    uncolored_mask = best_score < 0
+    if uncolored_mask.any():
+        fallback_score = 0.01
+        for i, P in enumerate(Ps):
+            if P is None or imgs[i] is None or zbufs[i] is None:
+                continue
+            img_arr = imgs[i]
+            img_h, img_w = img_arr.shape[:2]
+            zbuf    = zbufs[i]
+            C       = centers[i]
+            scale   = args.zbuf_scale
+
+            proj = (P @ pts_h.T).T
+            pz   = proj[:, 2]
+            u    = proj[:, 0] / (pz + 1e-12)
+            v    = proj[:, 1] / (pz + 1e-12)
+
+            view = C[np.newaxis, :] - pts
+            cos_angle = np.einsum('ij,ij->i', nors, view)
+
+            # Conservative fallback: only allow points that are almost front-facing.
+            mask = uncolored_mask & (pz > 0)
+            mask &= (u >= 0) & (u < img_w) & (v >= 0) & (v < img_h)
+            mask &= cos_angle > args.fallback_cos
+
+            idx = np.where(mask)[0]
+            if len(idx) == 0:
+                continue
+
+            # Keep fallback depth test close to the primary pass to avoid painting occluded backsides.
+            ui_z = np.clip((u[idx] / scale).astype(int), 0, zbuf.shape[1] - 1)
+            vi_z = np.clip((v[idx] / scale).astype(int), 0, zbuf.shape[0] - 1)
+            dist_cam = np.linalg.norm(pts[idx] - C, axis=1)
+            visible  = dist_cam <= zbuf[vi_z, ui_z] + args.zbuf_eps * args.fallback_eps_scale
+            idx = idx[visible]
+            if len(idx) == 0:
+                continue
+
+            x0 = np.clip(u[idx].astype(int), 0, img_w - 2)
+            y0 = np.clip(v[idx].astype(int), 0, img_h - 2)
+            x1 = x0 + 1; y1 = y0 + 1
+            dx = (u[idx] - x0)[:, None]; dy = (v[idx] - y0)[:, None]
+            rgb = (img_arr[y0, x0] * (1-dx) * (1-dy)
+                 + img_arr[y0, x1] *    dx  * (1-dy)
+                 + img_arr[y1, x0] * (1-dx) *    dy
+                 + img_arr[y1, x1] *    dx  *    dy).astype(np.float64)
+
+            old_best = best_score[idx].copy()
+            old_best_color = best_color[idx].copy()
+            score = np.full(len(idx), fallback_score, dtype=np.float64)
+
+            better = score > old_best
+            if np.any(better):
+                idx_b = idx[better]
+                second_score[idx_b] = old_best[better]
+                second_color[idx_b] = old_best_color[better]
+                best_score[idx_b] = score[better]
+                best_color[idx_b] = rgb[better]
+
+            remaining = ~better
+            if np.any(remaining):
+                idx_r = idx[remaining]
+                score_r = score[remaining]
+                second_better = score_r > second_score[idx_r]
+                if np.any(second_better):
+                    idx_s = idx_r[second_better]
+                    second_score[idx_s] = score_r[second_better]
+                    second_color[idx_s] = rgb[remaining][second_better]
 
     # Normalise
-    has_color = weight_acc > 0
+    has_color = best_score > -np.inf
     colors = np.full((N, 3), args.gray, dtype=np.float64)
-    colors[has_color] = color_acc[has_color] / weight_acc[has_color, np.newaxis]
+    if np.any(has_color):
+        second_valid = second_score > -np.inf
+        best_only = has_color & (~second_valid | (best_score >= args.winner_ratio * np.maximum(second_score, 1e-12)))
+        colors[best_only] = best_color[best_only]
+
+        blend_mask = has_color & ~best_only
+        if np.any(blend_mask):
+            pair_scores = np.stack([best_score[blend_mask], second_score[blend_mask]], axis=1)
+            pair_weights = pair_scores / (pair_scores.sum(axis=1, keepdims=True) + 1e-12)
+            colors[blend_mask] = (
+                best_color[blend_mask] * pair_weights[:, [0]]
+                + second_color[blend_mask] * pair_weights[:, [1]]
+            )
 
     colors_uint8 = np.clip(colors, 0, 255).astype(np.uint8)
     alpha = np.where(has_color, 255, 128).astype(np.uint8)

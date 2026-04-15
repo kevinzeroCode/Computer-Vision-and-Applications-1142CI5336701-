@@ -1,8 +1,5 @@
-# 3D pts for img03: hat_tip,right_eye,left_eye,nose,right_shoulder,left_shoulder,welcome_top_R,welcome_top_L,welcome_bot_R,welcome_bot_L,foot_R,foot_L
+# 3D pts for img03: hat_tip,right_shoulder,left_shoulder,welcome_top_R,welcome_top_L,welcome_bot_R,welcome_bot_L,foot_R,foot_L,belt_bump_R1,belt_bump_R2
 0.356331 -12.710505 68.027725
-8.811508 1.606378 40.393070
--8.501390 1.184743 39.635475
--0.231054 7.120427 40.577374
 13.152581 7.384129 25.697220
 -12.165690 8.660648 26.027912
 10.549878 14.148252 20.534502
@@ -11,3 +8,5 @@
 -9.950125 15.450649 11.518140
 9.285894 8.893702 1.006172
 -8.765692 8.868723 0.094635
+11.142218 3.728733 21.312843
+11.405384 4.635895 17.204170

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Midterm Report</title>
+<style>
+@page { size: A4; margin: 14mm 16mm 14mm 16mm; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 9.2pt;
+  line-height: 1.28;
+  color: #000;
+}
+h1 {
+  font-size: 13pt;
+  text-align: center;
+  margin: 0 0 2mm 0;
+}
+.sub {
+  text-align: center;
+  font-size: 8.5pt;
+  margin-bottom: 3mm;
+}
+h2 {
+  font-size: 10pt;
+  margin: 2.2mm 0 1.2mm 0;
+  border-bottom: 0.6pt solid #000;
+  padding-bottom: 0.5mm;
+}
+h3 {
+  font-size: 9.3pt;
+  margin: 1.6mm 0 0.8mm 0;
+}
+p { margin: 0 0 1.6mm 0; text-align: justify; }
+ul {
+  margin: 0.6mm 0 1.6mm 4.2mm;
+  padding: 0;
+}
+li { margin: 0 0 0.7mm 0; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4mm 0 1.4mm 0;
+  font-size: 8.4pt;
+}
+th, td {
+  border: 0.6pt solid #777;
+  padding: 1.1mm 1.6mm;
+  vertical-align: top;
+}
+th {
+  background: #ececec;
+  text-align: center;
+}
+.c { text-align: center; }
+.mono {
+  font-family: "Courier New", monospace;
+  font-size: 8.2pt;
+  background: #f4f4f4;
+  border-left: 2pt solid #bbb;
+  padding: 1.8mm 2mm;
+  margin: 1.4mm 0;
+}
+.cap {
+  font-size: 7.7pt;
+  color: #444;
+  margin-top: -0.2mm;
+}
+.pb { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>3D Model Colorization from Multi-View Images</h1>
+<div class="sub">M11415015 | Computer Vision and Applications (CI5336701, 2026 Spring) | Midterm Project</div>
+
+<h2>1. Overview</h2>
+<p>
+This project colorizes the 3D point cloud <em>Santa.xyz</em> (95,406 vertices, each with XYZ position and normal)
+from seven calibrated photographs. The final pipeline is:
+(1) build a mesh for MeshLab picking,
+(2) manually select 3D / 2D correspondences,
+(3) estimate one 3x4 projection matrix for each image,
+(4) reject invisible or occluded vertices,
+and (5) blend visible colors into the final colored point cloud.
+</p>
+
+<h2>2. Point Selection Strategy</h2>
+<h3>2.1 3D Control Points</h3>
+<p>
+The original point cloud does not contain triangles, so <em>make_geometry_ply.py</em> first converts it into
+<em>Santa_geometry.ply</em> for MeshLab annotation. Shared 3D landmarks were then picked on stable structural regions:
+hat tip, shoulders, welcome sign corners, feet, belt-side bumps, one back-belt point, and a small number of lower-body
+refinement points for trouser and shoe boundaries. The final shared list contains 35 candidate landmarks.
+</p>
+
+<h3>2.2 2D Correspondences and Practical Workflow</h3>
+<p>
+2D pixel coordinates were clicked manually with <em>pick_2d_points.py</em>. In practice, the same image was often clicked
+multiple times because some landmarks were easy to miss or place inaccurately on the first try. Instead of forcing a single
+annotation pass, multiple candidate point sets were tested and the best set was kept for projection estimation. This workflow
+matches the actual development process more reliably than assuming every manual click is correct on the first attempt.
+</p>
+<p>
+Each image finally uses 9 to 13 correspondences, depending on viewpoint visibility. Front views use bilateral shoulders,
+welcome-sign corners, and feet; side or rear views use the visible shoulder, belt-side landmarks, the back-belt point,
+and selected lower-body boundary points when they improve alignment.
+</p>
+
+<table>
+  <tr>
+    <th>Image</th>
+    <th>View</th>
+    <th class="c">Points Used</th>
+    <th>Main Landmarks</th>
+  </tr>
+  <tr><td class="c">img01</td><td>right-front</td><td class="c">13</td><td>hat tip, right shoulder, right sign corners, foot_R, belt-right points, trouser_hem_R</td></tr>
+  <tr><td class="c">img02</td><td>left-front</td><td class="c">11</td><td>hat tip, left shoulder, left sign corners, foot_L, belt-left points, belt_back_1</td></tr>
+  <tr><td class="c">img03</td><td>front-right</td><td class="c">11</td><td>hat tip, both shoulders, both sign corners, foot_L, belt-right points</td></tr>
+  <tr><td class="c">img04</td><td>front-left</td><td class="c">12</td><td>hat tip, both shoulders, both sign corners, belt-left points</td></tr>
+  <tr><td class="c">img05</td><td>front</td><td class="c">9</td><td>hat tip, both shoulders, all sign corners, foot_R</td></tr>
+  <tr><td class="c">img06</td><td>left-back</td><td class="c">10</td><td>hat tip, left shoulder, left sign corners, foot_L, belt-left points, belt_back_1</td></tr>
+  <tr><td class="c">img07</td><td>right-back</td><td class="c">11</td><td>hat tip, right shoulder, right sign corners, belt-right points, belt_back_1, shoe_heel_R</td></tr>
+</table>
+<div class="cap">Table 1. Final correspondence subsets used for the seven images.</div>
+
+<h2>3. Projection Matrix Estimation</h2>
+<p>
+For each image, a projection matrix <strong>P</strong> was estimated from 3D / 2D correspondences by normalized DLT.
+Each pair contributes two linear equations, and the final homogeneous system was solved by SVD.
+To improve robustness, the implementation also evaluates <em>solvePnPRansac</em> with approximate intrinsics and
+keeps the lower-error solution. When a point set contains one unstable point, the code can drop the worst offender
+and keep the remaining correspondences if this lowers reprojection error.
+</p>
+<div class="mono">
+For each correspondence (X, Y, Z) ↔ (u, v):<br>
+[X Y Z 1 0 0 0 0 -uX -uY -uZ -u] p = 0<br>
+[0 0 0 0 X Y Z 1 -vX -vY -vZ -v] p = 0
+</div>
+
+<table>
+  <tr>
+    <th>Image</th>
+    <th>Selected Solver</th>
+    <th class="c">Mean Reprojection Error</th>
+    <th>Estimated Camera Center</th>
+  </tr>
+  <tr><td class="c">img01</td><td>DLT</td><td class="c">12.76 px</td><td>(173.6, -9.6, 78.3)</td></tr>
+  <tr><td class="c">img02</td><td>DLT</td><td class="c">10.97 px</td><td>(-50.4, 2.4, 39.9)</td></tr>
+  <tr><td class="c">img03</td><td>DLT</td><td class="c">12.95 px</td><td>(112.0, 183.0, 51.5)</td></tr>
+  <tr><td class="c">img04</td><td>DLT</td><td class="c">9.65 px</td><td>(-141.2, 183.4, 66.2)</td></tr>
+  <tr><td class="c">img05</td><td>DLT</td><td class="c">4.73 px</td><td>(-13.1, 186.6, 16.4)</td></tr>
+  <tr><td class="c">img06</td><td>DLT</td><td class="c">6.66 px</td><td>(-219.3, -389.5, 18.7)</td></tr>
+  <tr><td class="c">img07</td><td>DLT</td><td class="c">9.69 px</td><td>(300.9, -605.2, 11.6)</td></tr>
+</table>
+<div class="cap">Table 2. Final reprojection errors after selecting the best manual point sets.</div>
+
+<div class="pb"></div>
+
+<h2>4. Colorization with Visibility and Occlusion Handling</h2>
+<h3>4.1 Vectorized Projection</h3>
+<p>
+All vertices are projected to every image in one vectorized NumPy pass. Each 3D vertex is converted to homogeneous
+coordinates, multiplied by <strong>P</strong>, and divided by depth to obtain image coordinates. Vertices with
+non-positive depth are rejected immediately because they lie behind the camera.
+</p>
+
+<h3>4.2 Back-face Culling and Z-buffer</h3>
+<p>
+For each camera, the view vector is computed from the estimated camera center to every vertex. If the dot product
+between the surface normal and the view vector is non-positive, the vertex is back-facing and excluded. To satisfy the
+project requirement on occlusion handling, a per-image z-buffer is then built by rasterizing the nearest camera-to-vertex
+distance into a downsampled depth map. A candidate vertex is accepted only if its distance is consistent with the stored
+nearest depth within a small tolerance. This step reduces color leakage from self-occluded regions and was especially
+important after the later lower-body refinements.
+</p>
+
+<h3>4.3 Color Sampling and Blending</h3>
+<p>
+Visible vertices are sampled by bilinear interpolation instead of nearest-neighbor lookup. To reduce blur caused by small
+reprojection mismatch between multiple views, the final implementation does not average every valid view equally.
+Instead, it scores visible views by a cosine-based confidence term, keeps the best two candidates for each vertex, and
+either selects the strongest view directly or blends the top two views only. This produced a sharper hat pattern and
+clearer eye details than the earlier all-view averaging version.
+</p>
+<div class="mono">
+visible if: depth &gt; 0, inside image, normal · view &gt; 0, and dist_to_camera &lt;= zbuffer + epsilon<br>
+sample color: bilinear interpolation on 4 neighboring pixels<br>
+blend rule: keep the top-2 scoring views, then choose best-only or weighted blend
+</div>
+
+<h2>5. Results</h2>
+<p>
+The final output files are <em>Santa_colored.ply</em> and <em>Santa_colored.xyz</em>. In the final configuration,
+95,020 of 95,406 vertices receive valid color (99.6%), while 386 vertices fall back to neutral gray.
+The main visual improvement from the z-buffer and top-2 blending strategy is reduced color bleeding around the hat,
+eyes, trouser hem, and shoe boundaries. One practical lesson from the project is that lower-body boundary points are
+useful only when they are manually placed very carefully; inaccurate additions can easily degrade projection quality,
+so repeated point selection and validation are necessary.
+</p>
+
+<h2>6. Run Order</h2>
+<p>
+The submission folder is organized so the reviewer can follow the same sequence used in the project:
+</p>
+<ul>
+  <li><strong>Step 0:</strong> run <em>make_geometry_ply.py</em> if a new MeshLab picking mesh is needed.</li>
+  <li><strong>Step 1:</strong> run <em>pick_2d_points.py</em> to record 2D correspondences; if a point set is poor, click again and keep the better set.</li>
+  <li><strong>Step 2:</strong> run <em>estimate_projection.py</em> to estimate the seven projection matrices and check reprojection errors.</li>
+  <li><strong>Step 3:</strong> run <em>colorize.py</em> to produce <em>Santa_colored.ply</em> and <em>Santa_colored.xyz</em>.</li>
+  <li><strong>Step 4:</strong> inspect the final model in MeshLab.</li>
+</ul>
+
+<h2>7. Conclusion</h2>
+<p>
+This project fulfills the required pipeline for manual multi-view colorization of a 3D point cloud. The final solution
+uses manual correspondence selection, normalized DLT-based projection estimation, reprojection-error screening,
+back-face rejection, z-buffer occlusion handling, bilinear sampling, and confidence-based multi-view blending.
+The result is a nearly complete colored model with improved local sharpness and more reliable visibility handling than
+the earlier non-z-buffer baseline.
+</p>
+
+</body>
+</html>
