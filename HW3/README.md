@@ -47,56 +47,56 @@ python hw3_chess_measurement.py --pick
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        INPUT                                    │
-│   ChessonChecker.png  +  K (intrinsics)  +  12 reference pts   │
+│   ChessonChecker.png  +  K (intrinsics)  +  12 reference pts    │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  STEP 1 │ Camera Pose Estimation                                │
 │                                                                 │
-│  12 world pts (X,Y,0)  ←→  12 image pts (u,v)                  │
+│  12 world pts (X,Y,0)  ←→  12 image pts (u,v)                   │
 │                                                                 │
-│  Harris corner detector  →  cornerSubPix (sub-pixel refine)    │
+│  Harris corner detector  →  cornerSubPix (sub-pixel refine)     │
 │          │                                                      │
 │          ▼                                                      │
-│  solvePnPRansac   →  reject outlier clicks                     │
+│  solvePnPRansac   →  reject outlier clicks                      │
 │          │                                                      │
 │          ▼                                                      │
-│  solvePnP (L-M)   →  minimize Σ reprojection error²            │
+│  solvePnP (L-M)   →  minimize Σ reprojection error²             │
 │          │                                                      │
 │          ▼                                                      │
-│  R, t   →   C = −Rᵀt   (camera center in world coords)         │
+│  R, t   →   C = −Rᵀt   (camera center in world coords)          │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │  STEP 2 │ Reprojection Error Check                              │
 │                                                                 │
-│  Reproject inlier 3D pts → compare to original 2D pts          │
+│  Reproject inlier 3D pts → compare to original 2D pts           │
 │                                                                 │
-│  mean < 2 px  →  OK                                            │
-│  mean > 2 px  →  WARNING (continue)                            │
-│  mean > 5 px  →  ERROR (stop)                                  │
+│  mean < 2 px  →  OK                                             │
+│  mean > 2 px  →  WARNING (continue)                             │
+│  mean > 5 px  →  ERROR (stop)                                   │
 │                                                                 │
-│  Result: mean = 0.09 px, max = 0.21 px  ✓                      │
+│  Result: mean = 0.09 px, max = 0.21 px  ✓                       │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  STEP 3 │ Back-project Base Pixel → World Z=0                  │
+│  STEP 3 │ Back-project Base Pixel → World Z=0                   │
 │                                                                 │
-│  base pixel (u_b, v_b) = (1167, 743)                           │
-│  [lowest gold pixel via HSV mask, shadow excluded]             │
+│  base pixel (u_b, v_b) = (1167, 743)                            │
+│  [lowest gold pixel via HSV mask, shadow excluded]              │
 │                                                                 │
 │  Method A (default)  — Ground-plane Homography                  │
-│    H = K [r₁ | r₂ | t]                                         │
-│    [X_b, Y_b, 1]ᵀ ~ H⁻¹ [u_b, v_b, 1]ᵀ                        │
+│    H = K [r₁ | r₂ | t]                                          │
+│    [X_b, Y_b, 1]ᵀ ~ H⁻¹ [u_b, v_b, 1]ᵀ                          │
 │                                                                 │
-│  Method B (fallback if cond(H) > 1e6) — Ray-Plane Intersect    │
-│    d_world = Rᵀ K⁻¹ [u,v,1]ᵀ                                   │
-│    λ = −C_z / d_z  →  P = C + λ·d                              │
+│  Method B (fallback if cond(H) > 1e6) — Ray-Plane Intersect     │
+│    d_world = Rᵀ K⁻¹ [u,v,1]ᵀ                                    │
+│    λ = −C_z / d_z  →  P = C + λ·d                               │
 │                                                                 │
-│  Result: (X_b, Y_b) = (5.366, −2.803) cm                       │
+│  Result: (X_b, Y_b) = (5.366, −2.803) cm                        │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                   ┌─────────┴──────────┐
@@ -105,12 +105,12 @@ python hw3_chess_measurement.py --pick
 ┌────────────────────────┐  ┌──────────────────────────────────────┐
 │  STEP 4 │ Height       │  │  STEP 5 │ Distance                   │
 │                        │  │                                      │
-│  top pixel (u_t, v_t)  │  │  d = ‖C − (X_b, Y_b, 0)ᵀ‖          │
+│  top pixel (u_t, v_t)  │  │  d = ‖C − (X_b, Y_b, 0)ᵀ‖            │
 │  = (1179, 387)         │  │                                      │
 │  [topmost gold pixel]  │  │  Both C and base are in world        │
 │                        │  │  coords (cm) → direct Euclidean      │
 │  Assume top = (X_b,    │  │                                      │
-│    Y_b, Z_top)         │  │  Result: d = 14.91 cm               │
+│    Y_b, Z_top)         │  │  Result: d = 14.91 cm                │
 │  (piece stands upright)│  └──────────────────────────────────────┘
 │                        │
 │  Solve v-projection:   │
@@ -129,15 +129,15 @@ python hw3_chess_measurement.py --pick
              │
              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  STEP 6 │ Visualization → result.jpg                           │
+│  STEP 6 │ Visualization → result.jpg                            │
 │                                                                 │
-│  Green dots   : reference corners (original)                   │
-│  Yellow rings : reprojected corners (error check)              │
+│  Green dots   : reference corners (original)                    │
+│  Yellow rings : reprojected corners (error check)               │
 │  Cyan dot     : piece base                                      │
 │  Magenta dot  : crown tip                                       │
 │  White line   : height indicator                                │
-│  Colored arrows: world axes (+X red, +Y green, +Z blue)        │
-│  Text overlay : distance, height, mean reprojection error      │
+│  Colored arrows: world axes (+X red, +Y green, +Z blue)         │
+│  Text overlay : distance, height, mean reprojection error       │ 
 └─────────────────────────────────────────────────────────────────┘
 ```
 
